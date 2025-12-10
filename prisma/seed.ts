@@ -1,6 +1,5 @@
-// dawidtwardy/computer-shop-lab10-dawidtwardy/computer-shop-lab10-dawidtwardy-lab11/prisma/seed.ts
+// prisma/seed.ts
 
-import "dotenv/config";
 import { PrismaClient, OrderStatus } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
@@ -21,6 +20,10 @@ async function main() {
   await prisma.order.deleteMany();
   await prisma.cartItem.deleteMany();
   await prisma.cart.deleteMany();
+  // DODANE: Czyszczenie nowych tabel Auth.js
+  await (prisma as any).session.deleteMany();
+  await (prisma as any).account.deleteMany();
+  await (prisma as any).verificationToken.deleteMany();
   await prisma.user.deleteMany();
   await prisma.product.deleteMany();
   await prisma.category.deleteMany();
@@ -36,7 +39,6 @@ async function main() {
   console.log(`Utworzono ${categories.length} kategorii.`);
   
   // 3. Tworzenie produktów
-  // Używamy produktów z załadowanego pliku JSON
   const productsToSeed = productsData.map((p: any) => ({
     ...p,
     price: parseFloat(p.price.toFixed(2)), 
@@ -58,21 +60,19 @@ async function main() {
   const allProducts = await prisma.product.findMany({ orderBy: { id: 'asc' } });
   const getProductByCode = (code: string) => allProducts.find(p => p.code === code)!;
   
-  // 5. Tworzenie użytkownika
-  const hashedPassword = 'mocked_hash_for_haslo123'; 
+  // 5. Tworzenie użytkownika (ZMODYFIKOWANE dla Auth.js - usunięto hasło)
   const user = await prisma.user.create({
     data: {
       email: 'user@pk.edu.pl',
       name: 'Jan Kowalski (Testowy)',
-      password: hashedPassword,
     },
   });
-  console.log('Utworzono użytkownika testowego.');
+  console.log(`Utworzono użytkownika testowego (ID: ${user.id}).`);
 
   // 6. Przykładowy Koszyk (Cart) z CartItem
   const cart = await prisma.cart.create({
     data: {
-      userId: user.id,
+      userId: user.id, // ID jest teraz String
       items: {
         create: [
           // RTX 4070 SUPER
@@ -87,7 +87,6 @@ async function main() {
 
   // 7. Przykładowe Zamówienia (Orders) - minimum 4
   const ordersInfo = [
-    // Zamówienie 1: Dostarczone (Starsze)
     {
       status: OrderStatus.DELIVERED,
       productItems: [
@@ -96,7 +95,6 @@ async function main() {
       ],
       date: '2025-01-10T12:00:00Z',
     },
-    // Zamówienie 2: Anulowane (Starsze)
     {
       status: OrderStatus.CANCELLED,
       productItems: [
@@ -105,7 +103,6 @@ async function main() {
       ],
       date: '2025-03-20T10:00:00Z',
     },
-    // Zamówienie 3: Wysłane (Niedawne)
     {
       status: OrderStatus.SHIPPED,
       productItems: [
@@ -114,7 +111,6 @@ async function main() {
       ],
       date: '2025-11-25T15:00:00Z',
     },
-    // Zamówienie 4: Oczekujące (Najnowsze)
     {
       status: OrderStatus.PENDING,
       productItems: [
@@ -142,7 +138,7 @@ async function main() {
     
     await prisma.order.create({
       data: {
-        userId: user.id,
+        userId: user.id, // ID jest typu String
         status: orderInfo.status,
         totalAmount: parseFloat(totalAmount.toFixed(2)),
         createdAt: new Date(orderInfo.date),
@@ -154,7 +150,6 @@ async function main() {
     });
   }
   console.log(`Utworzono ${ordersInfo.length} przykładowych zamówień.`);
-
 }
 
 main()
