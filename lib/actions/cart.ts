@@ -1,6 +1,6 @@
 "use server"
 
-import { prisma } from "@/lib/db"
+import { prisma } from "../db"
 import { revalidatePath } from "next/cache"
 
 export async function getCartWithItems(userId: string) {
@@ -30,7 +30,6 @@ export async function getCartTotal(userId: string) {
   }, 0)
 }
 
-// Funkcja potrzebna do listy rozwijanej w transferze
 export async function getAllUsersWithCarts() {
   return await prisma.user.findMany({
     include: {
@@ -45,7 +44,6 @@ export async function getAllUsersWithCarts() {
   })
 }
 
-// Funkcja transferu koszyka
 export async function transferCart(fromUserId: string, toUserId: string) {
   if (fromUserId === toUserId) {
     throw new Error("Nie można przenieść koszyka do tego samego użytkownika")
@@ -60,7 +58,6 @@ export async function transferCart(fromUserId: string, toUserId: string) {
     return { success: false, message: "Kosz źródłowy jest pusty" }
   }
 
-  // Znajdź lub stwórz koszyk docelowy
   let targetCart = await prisma.cart.findUnique({
     where: { userId: toUserId }
   })
@@ -71,7 +68,6 @@ export async function transferCart(fromUserId: string, toUserId: string) {
     })
   }
 
-  // Przenieś przedmioty (Upsert = aktualizuj ilość lub dodaj nowy)
   for (const item of sourceCart.items) {
     await prisma.cartItem.upsert({
       where: {
@@ -91,7 +87,6 @@ export async function transferCart(fromUserId: string, toUserId: string) {
     })
   }
 
-  // Wyczyść stary koszyk
   await prisma.cartItem.deleteMany({
     where: { cartId: sourceCart.id }
   })
