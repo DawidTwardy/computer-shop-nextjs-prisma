@@ -13,17 +13,11 @@ const adapter = new PrismaPg(pool);
 const app = express();
 const prisma = new PrismaClient({ adapter });
 const PORT = process.env.PORT || 3001;
-const DISCOUNT_RATE = 0.9; // NOWA STAŁA: 10% zniżki (cena końcowa to 90% oryginalnej)
+const DISCOUNT_RATE = 0.9;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// ============================================
-// PRODUCTS API
-// ============================================
-
-// GET all products
 app.get("/api/products", async (req: Request, res: Response) => {
   try {
     const products = await prisma.product.findMany({
@@ -31,11 +25,11 @@ app.get("/api/products", async (req: Request, res: Response) => {
     });
     res.json(products);
   } catch (error) {
+    console.error("GET /products error:", error);
     res.status(500).json({ error: "Błąd podczas pobierania produktów" });
   }
 });
 
-// GET product by ID
 app.get("/api/products/:id", async (req: Request, res: Response) => {
   try {
     const product = await prisma.product.findUnique({
@@ -48,11 +42,11 @@ app.get("/api/products/:id", async (req: Request, res: Response) => {
     }
     res.json(product);
   } catch (error) {
+    console.error("GET /products/:id error:", error);
     res.status(500).json({ error: "Błąd podczas pobierania produktu" });
   }
 });
 
-// GET products by category
 app.get("/api/products/category/:categoryId", async (req: Request, res: Response) => {
   try {
     const products = await prisma.product.findMany({
@@ -61,13 +55,10 @@ app.get("/api/products/category/:categoryId", async (req: Request, res: Response
     });
     res.json(products);
   } catch (error) {
+    console.error("GET /category error:", error);
     res.status(500).json({ error: "Błąd podczas pobierania produktów" });
   }
 });
-
-// ============================================
-// CATEGORIES API
-// ============================================
 
 app.get("/api/categories", async (req: Request, res: Response) => {
   try {
@@ -76,66 +67,83 @@ app.get("/api/categories", async (req: Request, res: Response) => {
     });
     res.json(categories);
   } catch (error) {
+    console.error("GET /categories error:", error);
     res.status(500).json({ error: "Błąd podczas pobierania kategorii" });
   }
 });
 
-// ============================================
-// CART API
-// ============================================
-
-// GET cart for user
 app.get("/api/cart/:userId", async (req: Request, res: Response) => {
   try {
+    const userId = req.params.userId;
     const cart = await prisma.cart.findUnique({
-      where: { userId: parseInt(req.params.userId) },
+      where: { userId: userId },
       include: {
         items: {
           include: { product: true },
         },
       },
     });
+    
+    // POPRAWKA: Jeśli koszyk nie istnieje, zwracamy pustą listę items zamiast błędu 404
     if (!cart) {
-      res.status(404).json({ error: "Koszyk nie znaleziony" });
+      res.json({ items: [] });
       return;
     }
+    
     res.json(cart);
   } catch (error) {
+    console.error("GET /cart error:", error);
     res.status(500).json({ error: "Błąd podczas pobierania koszyka" });
   }
 });
 
-// ADD to cart
 app.post("/api/cart/:userId/items", async (req: Request, res: Response) => {
   try {
     const { productId, quantity } = req.body;
-    const userId = parseInt(req.params.userId);
+    const userId = req.params.userId;
+
+    // Automatyczne tworzenie użytkownika, jeśli nie istnieje
+    const existingUser = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!existingUser) {
+      await prisma.user.create({
+        data: {
+          id: userId,
+          email: `user_${userId}@example.com`,
+          name: "Auto Generated User"
+        }
+      });
+    }
 
     let cart = await prisma.cart.findUnique({ where: { userId } });
-
     if (!cart) {
       cart = await prisma.cart.create({ data: { userId } });
     }
 
+    const pId = Number(productId);
+    const qty = Number(quantity);
+
     const cartItem = await prisma.cartItem.upsert({
       where: {
-        cartId_productId: { cartId: cart.id, productId },
+        cartId_productId: { cartId: cart.id, productId: pId },
       },
-      update: { quantity: (await prisma.cartItem.findUnique({ where: { cartId_productId: { cartId: cart.id, productId } } }))?.quantity || 0 + quantity },
-      create: { cartId: cart.id, productId, quantity },
+      update: { quantity: { increment: qty } },
+      create: { cartId: cart.id, productId: pId, quantity: qty },
       include: { product: true },
     });
 
     res.json(cartItem);
   } catch (error) {
+    console.error("POST /cart/items error:", error);
     res.status(500).json({ error: "Błąd podczas dodawania do koszyka" });
   }
 });
 
-// REMOVE from cart
 app.delete("/api/cart/:userId/items/:productId", async (req: Request, res: Response) => {
   try {
-    const userId = parseInt(req.params.userId);
+    const userId = req.params.userId;
     const productId = parseInt(req.params.productId);
 
     const cart = await prisma.cart.findUnique({ where: { userId } });
@@ -152,29 +160,26 @@ app.delete("/api/cart/:userId/items/:productId", async (req: Request, res: Respo
 
     res.json({ success: true });
   } catch (error) {
+    console.error("DELETE /cart item error:", error);
     res.status(500).json({ error: "Błąd podczas usuwania z koszyka" });
   }
 });
 
-// ============================================
-// ORDERS API
-// ============================================
-
-// GET user orders
 app.get("/api/orders/:userId", async (req: Request, res: Response) => {
   try {
+    const userId = req.params.userId;
     const orders = await prisma.order.findMany({
-      where: { userId: parseInt(req.params.userId) },
+      where: { userId: userId },
       include: { items: { include: { product: true } } },
       orderBy: { createdAt: "desc" },
     });
     res.json(orders);
   } catch (error) {
+    console.error("GET /orders error:", error);
     res.status(500).json({ error: "Błąd podczas pobierania zamówień" });
   }
 });
 
-// CREATE order
 app.post("/api/orders", async (req: Request, res: Response) => {
   try {
     const { userId, cartId } = req.body;
@@ -188,9 +193,8 @@ app.post("/api/orders", async (req: Request, res: Response) => {
       res.status(400).json({ error: "Koszyk jest pusty" });
       return;
     }
-    
-    // ZMODYFIKOWANA LOGIKA: OBLICZANIE TOTAL AMOUNT Z UWZGLĘDNIENIEM ZNIŻKI
-    const totalAmount = cart.items.reduce((sum, item) => 
+
+    const totalAmount = cart.items.reduce((sum, item) =>
       sum + (item.product.price * DISCOUNT_RATE) * item.quantity, 0
     );
 
@@ -202,7 +206,6 @@ app.post("/api/orders", async (req: Request, res: Response) => {
           create: cart.items.map((item) => ({
             productId: item.product.id,
             quantity: item.quantity,
-            // ZMODYFIKOWANA LOGIKA: ZAPIS CENY Z UWZGLĘDNIENIEM ZNIŻKI
             priceAtOrder: parseFloat((item.product.price * DISCOUNT_RATE).toFixed(2)),
             productName: item.product.name,
             productCode: item.product.code,
@@ -212,18 +215,14 @@ app.post("/api/orders", async (req: Request, res: Response) => {
       include: { items: { include: { product: true } } },
     });
 
-    // Clear cart
     await prisma.cartItem.deleteMany({ where: { cartId } });
 
     res.json(order);
   } catch (error) {
+    console.error("POST /orders error:", error);
     res.status(500).json({ error: "Błąd podczas tworzenia zamówienia" });
   }
 });
-
-// ============================================
-// HEALTH CHECK
-// ============================================
 
 app.get("/api/health", async (req: Request, res: Response) => {
   try {
@@ -234,13 +233,8 @@ app.get("/api/health", async (req: Request, res: Response) => {
   }
 });
 
-// ============================================
-// START SERVER
-// ============================================
-
 app.listen(PORT, () => {
   console.log(`🚀 Backend API running on http://localhost:${PORT}`);
-  console.log(`📊 Docs: GET http://localhost:${PORT}/api/health`);
 });
 
 process.on("SIGINT", async () => {

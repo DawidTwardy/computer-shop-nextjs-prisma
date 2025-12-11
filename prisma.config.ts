@@ -1,5 +1,3 @@
-// prisma.config.ts
-
 import { defineConfig } from "@prisma/config";
 
 // WAŻNE: Wpisz URL połączenia bezpośrednio, aby uniknąć problemów z ładowaniem .env przez Prisma CLI.
